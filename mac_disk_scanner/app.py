@@ -179,7 +179,7 @@ class CleanerApp(App):
                         )
                     yield Button("重新扫描", id="rescan_region")
                 table = DataTable(id="tree", cursor_type="row", zebra_stripes=True)
-                table.add_columns("Name", "Size", "Type", "Available Action")
+                table.add_columns("Name", "Size", "Type")
                 yield table
 
             with Vertical(id="right"):
@@ -188,9 +188,7 @@ class CleanerApp(App):
                 yield Static("Click a directory to inspect its next real filesystem level.",
                              id="details_body")
                 with Vertical(id="actions"):
-                    yield Button("Scan & Expand", id="expand")
-                    yield Button("Measure Exact Sizes", id="measure_sizes")
-                    yield Button("No Automatic Action", id="run_action")
+                    yield Button("No Action", id="run_action")
                     yield Button("Open in Finder", id="finder")
                     yield Button("Open in Terminal", id="terminal")
 
@@ -470,26 +468,17 @@ class CleanerApp(App):
 
         While one is active:
         - block starting another clean/delete
-        - block full scan / explicit refresh to avoid replacing the tree
         - KEEP table navigation and expand/collapse usable
         """
         self._operation_running = running
 
         action_btn = self.query_one("#run_action", Button)
-        measure_btn = self.query_one("#measure_sizes", Button)
-        refresh_btn = self.query_one("#refresh", Button)
-        fullscan_btn = self.query_one("#fullscan", Button)
 
         if running:
             action_btn.disabled = True
-            measure_btn.disabled = True
-            refresh_btn.disabled = True
-            fullscan_btn.disabled = True
             action_btn.label = label or "Running in background…"
             return
 
-        refresh_btn.disabled = False
-        fullscan_btn.disabled = False
         self.update_action_buttons(self.current_node())
         self.flush_deferred_sizing()
 
@@ -838,48 +827,6 @@ Math.round(ObjC.unwrap(ref[0]));
             except Exception:
                 pass
 
-    def action_text(self, node: ScanNode):
-        """
-        Pure table-rendering helper.
-
-        It must never mutate buttons or depend on widget-local variables;
-        refresh_table() calls this for every row, including while a background
-        filesystem action is running.
-        """
-        action = node.metadata.get("action_type", "none")
-
-        if action == "project_clean":
-            project = node.metadata.get("project") or {}
-            return Text(
-                project.get("label", "Project clean"),
-                style="bold green",
-            )
-
-        if action == "delete_cache":
-            return Text(
-                "Delete cache/temp",
-                style="bold red",
-            )
-
-        if action == "delete_manual":
-            return Text(
-                "Delete…",
-                style="bold red",
-            )
-
-        project = node.metadata.get("project")
-
-        if project and not project.get("command"):
-            return Text(
-                "No standard clean command",
-                style="yellow",
-            )
-
-        return Text(
-            "Inspect only",
-            style="dim",
-        )
-
     def can_expand(self, node: ScanNode):
         return bool(
             node.children
@@ -942,7 +889,6 @@ Math.round(ObjC.unwrap(ref[0]));
                 self.name_text(node, depth),
                 self.display_size(node),
                 node.category,
-                self.action_text(node),
                 key=str(idx),
             )
 
@@ -1144,42 +1090,20 @@ Math.round(ObjC.unwrap(ref[0]));
         self.update_action_buttons(None)
 
     def update_action_buttons(self, node):
-        expand_btn = self.query_one("#expand", Button)
-        measure_btn = self.query_one("#measure_sizes", Button)
         action_btn = self.query_one("#run_action", Button)
 
         if not node:
-            expand_btn.disabled = True
-            measure_btn.disabled = True
             action_btn.disabled = True
-            action_btn.label = "No Automatic Action"
+            action_btn.label = "No Action"
             return
-
-        expand_btn.disabled = not self.can_expand(node)
-        if self.can_expand(node):
-            if node.metadata.get("lazy_expandable") and not node.metadata.get("children_loaded"):
-                expand_btn.label = "Scan & Expand"
-            elif node.path in self.expanded:
-                expand_btn.label = "Collapse"
-            else:
-                expand_btn.label = "Expand"
-        else:
-            expand_btn.label = "No Children"
-
-        measure_btn.disabled = not bool(
-            node.metadata.get("is_dir", False)
-            and node.metadata.get("children_loaded", False)
-            and node.children
-        )
 
         action = node.metadata.get("action_type", "none")
 
         # A filesystem operation may continue in the background while the user
         # browses the tree, but starting a second clean/delete is blocked.
         if self._operation_running:
-            measure_btn.disabled = True
             action_btn.disabled = True
-            action_btn.label = "Operation running in background…"
+            action_btn.label = "Operation running…"
             return
 
         if action == "project_clean":
@@ -1187,25 +1111,18 @@ Math.round(ObjC.unwrap(ref[0]));
             action_btn.disabled = False
             action_btn.variant = "success"
             action_btn.label = project.get("label", "Run project clean")
-        elif action == "delete_cache":
+        elif action in ("delete_cache", "delete_manual"):
             action_btn.disabled = False
             action_btn.variant = "error"
-            action_btn.label = (
-                "Delete cache/temp"
+            size_text = (
+                "…"
                 if node.metadata.get("size_pending")
-                else f"Delete {human_size(node.size)}"
+                else human_size(node.size)
             )
-        elif action == "delete_manual":
-            action_btn.disabled = False
-            action_btn.variant = "error"
-            action_btn.label = (
-                "Delete permanently…"
-                if node.metadata.get("size_pending")
-                else f"Delete {human_size(node.size)}…"
-            )
+            action_btn.label = f"Delete {size_text}"
         else:
             action_btn.disabled = True
-            action_btn.label = "No Automatic Action"
+            action_btn.label = "No Action"
 
     # ---------- navigation ----------
 
@@ -1900,10 +1817,6 @@ Math.round(ObjC.unwrap(ref[0]));
                     asyncio.create_task(
                         self.scan_regions([self.active_category])
                     )
-        elif bid == "expand":
-            self.action_toggle_expand()
-        elif bid == "measure_sizes":
-            self.action_measure_sizes()
         elif bid == "run_action":
             self.run_current_action()
         elif bid == "finder":

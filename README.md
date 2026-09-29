@@ -119,7 +119,7 @@ source .venv/bin/activate
 
 按钮：
 
-- 右侧面板：`Scan & Expand`、`Measure Exact Sizes`、当前节点动作按钮（clean 命令 / Delete）、`Open in Finder`、`Open in Terminal`
+- 右侧面板：动作按钮（能识别 clean 命令时显示对应命令，如 `cargo clean`；否则显示 `Delete`）+ `Open in Finder` + `Open in Terminal`，共三个按钮
 - Home 视图标题右侧的 `重新扫描` 即全盘扫描（弹确认框列出将扫描/将跳过的区域）
 - 其余各区域视图的 `重新扫描` 仅重扫当前区域（启动时缺失的快速区域会自动补扫）；侧栏状态点标记过期/未扫描区域
 - 工作区项目大小在后台逐个测量，表格中 `…` 渐进变为真实大小
