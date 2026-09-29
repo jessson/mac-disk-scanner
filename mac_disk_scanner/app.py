@@ -179,7 +179,7 @@ class CleanerApp(App):
                         )
                     yield Button("重新扫描", id="rescan_region")
                 table = DataTable(id="tree", cursor_type="row", zebra_stripes=True)
-                table.add_columns("Name", "Size", "Type")
+                table.add_columns("Name", "Size", "Type", "Path")
                 yield table
 
             with Vertical(id="right"):
@@ -889,6 +889,9 @@ Math.round(ObjC.unwrap(ref[0]));
                 self.name_text(node, depth),
                 self.display_size(node),
                 node.category,
+                node.path
+                if not node.metadata.get("virtual", False)
+                else "(virtual)",
                 key=str(idx),
             )
 
