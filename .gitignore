@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environment (created by setup.sh)
+.venv/
+venv/
+env/
+
+# Machine-specific resolved path to Dundee GDU (written by setup.sh)
+.gdu-bin
+
+# macOS
+.DS_Store
