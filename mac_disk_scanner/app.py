@@ -1577,13 +1577,18 @@ Math.round(ObjC.unwrap(ref[0]));
             return
 
         project = node.metadata.get("project") or {}
+        action_label = ""
+        if action == "project_clean":
+            action_label = project.get("label", "Project clean")
+        elif action in ("delete_cache", "delete_manual"):
+            action_label = f"Delete {self.display_size(node)}"
 
         self.query_one("#status", Static).update(
-            f"Action requested: {self.action_text(node).plain} — waiting for confirmation."
+            f"Action requested: {action_label} — waiting for confirmation."
         )
         self.set_progress(
             5,
-            f"Waiting for confirmation: {self.action_text(node).plain}",
+            f"Waiting for confirmation: {action_label}",
         )
 
         if action == "project_clean":
