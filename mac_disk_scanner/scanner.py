@@ -532,7 +532,7 @@ class Scanner:
             if any(marker in names for marker in PROJECT_MARKERS):
                 node = self.make_real_node(
                     path,
-                    str(home),
+                    str(path.parent),
                     measure_size=False,
                 )
                 if node.metadata.get("project"):
