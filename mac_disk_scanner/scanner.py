@@ -7,7 +7,15 @@ from typing import Callable, Optional
 
 from .detectors import detect_project_action
 from .models import ScanNode
-from .utils import MIB, gdu_size, gdu_top_level_sizes, gdu_json_depth1_sizes, file_size, run
+from .utils import (
+    MIB,
+    file_size,
+    gdu_json_depth1_sizes,
+    gdu_size,
+    has_cache_tag,
+    open_file_users,
+    run,
+)
 
 HOME = Path.home()
 MIN_ROOT_SIZE = 10 * MIB
@@ -69,9 +77,32 @@ KNOWN_CACHE_PATHS = {
     _norm(HOME / ".codex" / ".tmp"): "application temp",
 }
 
-TMP_PREFIXES = ("cdtrader-", "codex-")
-TMP_CONTAINS = ("gocache", "benchmark", "venv")
-TMP_SUFFIXES = ("-target", "-build")
+PRIVATE_TMP = Path("/private/tmp")
+
+# Common build outputs of a recognised project. With a standard clean command
+# available, the project clean owns them instead of a direct Delete.
+BUILD_OUTPUT_NAMES = {
+    "target", "build", "dist", "out", ".next", ".nuxt", ".turbo", "coverage",
+}
+
+_UNSET = object()
+
+
+def _contains_cache_tag(path: Path, depth: int = 2) -> int:
+    """Count CACHEDIR.TAG-marked directories at `path` and up to `depth` below."""
+    if has_cache_tag(path):
+        return 1
+    if depth <= 0:
+        return 0
+    count = 0
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.is_dir(follow_symlinks=False):
+                    count += _contains_cache_tag(Path(entry.path), depth - 1)
+    except OSError:
+        pass
+    return count
 
 
 class Scanner:
@@ -83,8 +114,9 @@ class Scanner:
     - lazy expand never runs recursive du first
     """
 
-    def __init__(self, progress: Progress = None):
+    def __init__(self, progress: Progress = None, tmp_base: Path = PRIVATE_TMP):
         self.progress = progress or (lambda _p, _m: None)
+        self.tmp_base = tmp_base
 
     def _emit(self, pct: int, msg: str):
         self.progress(max(0, min(100, pct)), msg)
@@ -93,20 +125,17 @@ class Scanner:
         return KNOWN_CACHE_PATHS.get(_norm(path))
 
     def is_private_tmp_candidate(self, path: Path) -> bool:
+        """
+        Any direct child of the temp base owned by the current user. Names are
+        not trusted: tools pick arbitrary temp names, and a name whitelist
+        hid a 98 GB build directory.
+        """
         try:
-            parent = path.parent.resolve()
-            if parent != Path("/private/tmp").resolve():
+            if path.parent.resolve() != self.tmp_base.resolve():
                 return False
-        except Exception:
-            if str(path.parent) != "/private/tmp":
-                return False
-
-        name = path.name.lower()
-        return (
-            name.startswith(TMP_PREFIXES)
-            or any(x in name for x in TMP_CONTAINS)
-            or name.endswith(TMP_SUFFIXES)
-        )
+            return path.lstat().st_uid == os.getuid()
+        except OSError:
+            return False
 
     def manual_delete_allowed(
         self,
@@ -144,8 +173,13 @@ class Scanner:
         *,
         measure_size: bool = True,
         known_size: int | None = None,
+        parent_project=_UNSET,
     ) -> ScanNode:
         is_dir = path.is_dir() and not path.is_symlink()
+        try:
+            mtime = path.lstat().st_mtime
+        except OSError:
+            mtime = None
 
         if is_dir:
             if known_size is not None:
@@ -206,43 +240,55 @@ class Scanner:
             action_type = "delete_cache"
             project_data = None
 
-        if is_dir and not noise_blocked and self.is_private_tmp_candidate(path):
-            node_category = "Temporary directory"
-            reason = "Explicit /private/tmp development temporary/build directory."
-            action_type = "delete_cache"
-            project_data = None
+        cache_tagged = is_dir and not noise_blocked and has_cache_tag(path)
 
-        # Keep common build outputs owned by a parent project's standard clean
+        # Keep build outputs owned by a parent project's standard clean
         # command under that project clean rather than exposing direct Delete.
+        # A CACHEDIR.TAG directory inside such a project (e.g. a configured
+        # Cargo target-dir) is also a build output of that project.
         parent_clean_owns_item = False
 
-        if action_type == "none" and not noise_blocked and parent_path:
-            try:
-                parent_project = detect_project_action(
-                    Path(parent_path)
-                )
-            except Exception:
-                parent_project = None
+        if (
+            action_type == "none"
+            and not noise_blocked
+            and parent_path
+            and (path.name in BUILD_OUTPUT_NAMES or cache_tagged)
+        ):
+            if parent_project is _UNSET:
+                try:
+                    parent_project = detect_project_action(Path(parent_path))
+                except Exception:
+                    parent_project = None
 
-            if (
-                parent_project
-                and parent_project.command
-                and path.name in {
-                    "target",
-                    "build",
-                    "dist",
-                    "out",
-                    ".next",
-                    ".nuxt",
-                    ".turbo",
-                    "coverage",
-                }
-            ):
+            if parent_project and parent_project.command:
                 parent_clean_owns_item = True
                 reason = (
                     f"Build output of parent {parent_project.project_type} "
                     f"project. Prefer {parent_project.label} at the project root."
                 )
+
+        if cache_tagged and action_type == "none" and not parent_clean_owns_item:
+            node_category = "Build cache"
+            reason = (
+                "Marked with CACHEDIR.TAG: the tool that created it declares "
+                "the contents regenerable."
+            )
+            action_type = "delete_cache"
+            project_data = None
+
+        if is_dir and not noise_blocked and self.is_private_tmp_candidate(path):
+            tagged = _contains_cache_tag(path)
+            if tagged:
+                node_category = "Build cache"
+                reason = (
+                    f"Temporary directory owned by you with {tagged} "
+                    "CACHEDIR.TAG build cache(s) inside."
+                )
+            else:
+                node_category = "Temporary"
+                reason = "Temporary directory owned by you under /private/tmp."
+            action_type = "delete_cache"
+            project_data = None
 
         if (
             action_type == "none"
@@ -263,13 +309,10 @@ class Scanner:
             "real_path": True,
             "is_dir": is_dir,
             "children_loaded": False,
-            "lazy_expandable": bool(
-                is_dir
-                and action_type != "delete_cache"
-                and not noise_blocked
-            ),
+            "lazy_expandable": bool(is_dir and not noise_blocked),
             "action_type": action_type,
             "size_pending": size_pending,
+            "mtime": mtime,
         }
         if project_data:
             metadata["project"] = project_data
@@ -318,6 +361,7 @@ class Scanner:
 
         children = []
         total = max(1, len(entries))
+        parent_project = detect_project_action(path)
 
         for idx, entry in enumerate(entries, 1):
             self._emit(int(idx / total * 100), f"Listing {path.name}: {entry.name}")
@@ -328,6 +372,7 @@ class Scanner:
                     entry,
                     parent_path=str(path),
                     measure_size=False,
+                    parent_project=parent_project,
                 )
                 if entry.is_dir() or child.size >= MIN_LIST_FILE_SIZE:
                     children.append(child)
@@ -351,21 +396,8 @@ class Scanner:
         parent: ScanNode,
     ) -> dict[str, int]:
         """
-        Measure direct children exactly with ONE system du traversal.
-
-        Why not use GDU here?
-        ---------------------
-        GDU remains the fast backend for broad/top-level discovery, but its
-        non-interactive top-level accounting may differ from the system du
-        result for some trees (hard links, filesystem metadata/error flags,
-        or output/accounting differences).
-
-        The user-facing expanded-directory view should match macOS `du`.
-        This command is equivalent in spirit to:
-
-            /usr/bin/du -x -k -d 1 <parent>
-
-        It scans the parent once — NOT once per child.
+        Measure direct children with ONE parallel GDU traversal of the parent.
+        Results match `du -x -k -d 1` while running 1.4-5x faster.
         """
         if parent.metadata.get("virtual"):
             return {}
@@ -375,79 +407,9 @@ class Scanner:
         if not path.exists() or not path.is_dir():
             return {}
 
-        self._emit(
-            20,
-            f"Exact child sizing: {path.name}",
-        )
-
-        rc, output = run(
-            [
-                "/usr/bin/du",
-                "-x",
-                "-k",
-                "-d",
-                "1",
-                str(path),
-            ],
-            timeout=1800,
-        )
-
-        try:
-            parent_abs = path.resolve()
-        except Exception:
-            parent_abs = path
-
-        result: dict[str, int] = {}
-
-        for raw_line in output.splitlines():
-            line = raw_line.strip()
-
-            if not line:
-                continue
-
-            parts = line.split(None, 1)
-
-            if len(parts) != 2:
-                continue
-
-            size_kb, raw_path = parts
-
-            try:
-                size = int(size_kb) * 1024
-            except ValueError:
-                # stderr is merged into stdout by run(); skip error text.
-                continue
-
-            candidate = Path(raw_path)
-
-            if not candidate.is_absolute():
-                candidate = parent_abs / candidate
-
-            try:
-                candidate_abs = candidate.resolve()
-            except Exception:
-                candidate_abs = candidate
-
-            # du -d 1 also prints the parent total; keep only direct children.
-            try:
-                if candidate_abs.parent != parent_abs:
-                    continue
-            except Exception:
-                continue
-
-            result[str(candidate_abs)] = size
-
-        if not result and rc != 0:
-            raise RuntimeError(
-                f"du failed for {path} (exit {rc}): "
-                f"{output[-1200:]}"
-            )
-
-        self._emit(
-            95,
-            f"Exact child sizing complete: {path.name}",
-        )
-
+        self._emit(20, f"Exact child sizing: {path.name}")
+        _total, result = gdu_json_depth1_sizes(path)
+        self._emit(95, f"Exact child sizing complete: {path.name}")
         return result
 
     def measure_node_size(self, node: ScanNode) -> ScanNode | None:
@@ -475,32 +437,14 @@ class Scanner:
         fresh.scanned_at = time.time()
         return fresh
 
-    def scan_workspaces(self) -> Optional[ScanNode]:
+    def discover_projects(self) -> list[ScanNode]:
         """
-        Discover development workspaces by walking the home directory and
-        matching project marker files.
+        Walk the home directory and return a node per directory holding a
+        project marker file. Sizes are NOT measured here.
 
-        Sizes are NOT measured here: a hit is recorded as size_pending and
-        exact sizes are calculated on demand when the user expands it.
         Dependency/build-cache directories (NOISE_DIRS) and known cache roots
         are pruned so multi-million-file directories are never traversed.
         """
-        root = ScanNode(
-            path="__workspaces__",
-            name="Workspaces",
-            category="Workspaces",
-            reason="Development workspaces discovered by project marker files.",
-            metadata={
-                "virtual": True,
-                "root_kind": "workspaces",
-                "container": True,
-                "children_loaded": True,
-                "lazy_expandable": True,
-                "action_type": "none",
-                "size_pending": False,
-            },
-        )
-
         found = []
         home = HOME
         visited = 0
@@ -549,12 +493,167 @@ class Scanner:
                 walk(Path(e.path), depth + 1)
 
         walk(home, 0)
+        return found
 
+    def scan_workspaces(self) -> Optional[ScanNode]:
+        """Development workspaces discovered by project marker files."""
+        root = ScanNode(
+            path="__workspaces__",
+            name="Workspaces",
+            category="Workspaces",
+            reason="Development workspaces discovered by project marker files.",
+            metadata={
+                "virtual": True,
+                "root_kind": "workspaces",
+                "container": True,
+                "children_loaded": True,
+                "lazy_expandable": True,
+                "action_type": "none",
+                "size_pending": False,
+            },
+        )
+
+        found = self.discover_projects()
         found.sort(key=lambda n: n.name.lower())
         root.children = found
         root.size = 0
         self._emit(100, f"Workspace discovery complete: {len(found)} projects")
         return root if found else None
+
+    def git_common_dirs(self, project_paths: list[Path]) -> list[Path]:
+        """Unique git common dirs (the shared .git) of the given directories."""
+        common: dict[str, Path] = {}
+        for path in project_paths:
+            rc, output = run(
+                ["git", "-C", str(path), "rev-parse",
+                 "--path-format=absolute", "--git-common-dir"],
+                timeout=30,
+            )
+            if rc != 0 or not output.startswith("/"):
+                continue
+            resolved = Path(output.splitlines()[-1]).resolve()
+            common.setdefault(str(resolved), resolved)
+        return list(common.values())
+
+    def linked_worktrees(self, common_dir: Path) -> list[dict]:
+        """
+        Linked (non-main) worktrees of one repository from
+        `git worktree list --porcelain`.
+        """
+        rc, output = run(
+            ["git", f"--git-dir={common_dir}", "worktree", "list", "--porcelain"],
+            timeout=30,
+        )
+        if rc != 0:
+            return []
+
+        blocks = [b for b in output.split("\n\n") if b.strip()]
+        result = []
+        # The first block is always the main worktree.
+        for block in blocks[1:]:
+            info = {"common_dir": str(common_dir), "branch": "detached HEAD",
+                    "locked": False, "path": None}
+            for line in block.splitlines():
+                key, _, value = line.partition(" ")
+                if key == "worktree":
+                    info["path"] = value
+                elif key == "branch":
+                    info["branch"] = value.removeprefix("refs/heads/")
+                elif key == "locked":
+                    info["locked"] = True
+            if info["path"] and Path(info["path"]).is_dir():
+                result.append(info)
+        return result
+
+    def worktree_changes(self, path: Path) -> int | None:
+        """Count of modified + untracked entries, or None when unknown."""
+        rc, output = run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            timeout=300,
+        )
+        if rc != 0:
+            return None
+        return len([line for line in output.splitlines() if line.strip()])
+
+    def scan_worktrees(self, project_paths: list[Path] | None = None) -> Optional[ScanNode]:
+        """
+        Linked git worktrees of every discovered repository, wherever they
+        live (inside the repo, under a tool's home directory, in /tmp…).
+        """
+        root = ScanNode(
+            path="__worktrees__",
+            name="Worktrees",
+            category="Worktrees",
+            reason="Linked git worktrees of the discovered repositories.",
+            metadata={
+                "virtual": True,
+                "root_kind": "worktrees",
+                "container": True,
+                "children_loaded": True,
+                "lazy_expandable": True,
+                "action_type": "none",
+                "size_pending": False,
+            },
+        )
+
+        if project_paths is None:
+            self._emit(5, "Worktrees: discovering repositories…")
+            project_paths = [Path(n.path) for n in self.discover_projects()]
+
+        self._emit(30, "Worktrees: listing git worktrees…")
+        infos = []
+        seen = set()
+        for common_dir in self.git_common_dirs(project_paths):
+            for info in self.linked_worktrees(common_dir):
+                key = str(Path(info["path"]).resolve())
+                if key not in seen:
+                    seen.add(key)
+                    infos.append(info)
+
+        users = open_file_users([Path(i["path"]) for i in infos])
+        total = max(1, len(infos))
+        children = []
+
+        for idx, info in enumerate(infos, 1):
+            path = Path(info["path"])
+            self._emit(35 + int(60 * idx / total), f"Worktree {idx}/{total}: {path}")
+            node = self.make_real_node(path, root.path, measure_size=True)
+            changes = self.worktree_changes(path)
+            node.category = "Git worktree"
+            node.metadata.pop("project", None)
+            node.metadata["worktree"] = {
+                "common_dir": info["common_dir"],
+                "branch": info["branch"],
+                "locked": info["locked"],
+                "changes": changes,
+            }
+            node.metadata["in_use_by"] = users.get(str(path), [])
+
+            if info["locked"]:
+                node.metadata["action_type"] = "none"
+                node.reason = "Worktree is locked (git worktree lock)."
+            elif changes is None:
+                node.metadata["action_type"] = "none"
+                node.reason = "git status failed; cannot tell whether work would be lost."
+            elif changes:
+                node.metadata["action_type"] = "none"
+                node.reason = (
+                    f"{changes} uncommitted or untracked change(s). "
+                    "Commit or discard them before removing the worktree."
+                )
+            else:
+                node.metadata["action_type"] = "worktree_remove"
+                node.reason = (
+                    "Clean worktree. git worktree remove deletes the checkout "
+                    f"and its ignored build output; branch {info['branch']} is kept."
+                )
+            children.append(node)
+
+        children.sort(key=lambda x: x.size, reverse=True)
+        root.children = children
+        root.size = sum(x.size for x in children)
+        self._emit(100, f"Worktrees: {len(children)} found")
+        return root if children else None
 
     def scan_home(self):
         root = ScanNode(
@@ -689,15 +788,15 @@ class Scanner:
         return root
 
     def scan_private_tmp(self):
-        base = Path("/private/tmp")
+        base = self.tmp_base
         if not base.exists():
             return None
 
         root = ScanNode(
             path=str(base),
-            name="/private/tmp",
+            name=str(base),
             category="Temporary",
-            reason="Explicit development temp/build candidates.",
+            reason="Items of yours under the system temp directory.",
             metadata={
                 "real_path": True,
                 "root_kind": "temporary",
@@ -710,25 +809,45 @@ class Scanner:
             },
         )
 
-        try:
-            entries = [p for p in base.iterdir() if p.is_dir() and not p.is_symlink()]
-        except OSError:
-            entries = []
+        # ONE GDU traversal sizes every direct child (files included).
+        self._emit(10, f"GDU scanning {base}…")
+        base_total, sizes = gdu_json_depth1_sizes(base)
 
-        candidates = [p for p in entries if self.is_private_tmp_candidate(p)]
-        total = max(1, len(candidates))
+        candidates = []
+        for key, size in sizes.items():
+            path = Path(key)
+            if size < MIN_ROOT_SIZE or path.is_symlink():
+                continue
+            if path.is_dir() and not self.is_private_tmp_candidate(path):
+                continue
+            if not path.is_dir():
+                try:
+                    if path.lstat().st_uid != os.getuid():
+                        continue
+                except OSError:
+                    continue
+            candidates.append((path, size))
+
+        users = open_file_users([p for p, _ in candidates])
         children = []
+        total = max(1, len(candidates))
 
-        for idx, path in enumerate(candidates, 1):
-            self._emit(72 + int(12 * idx / total), f"Temporary {idx}/{total}: {path.name}")
-            node = self.make_real_node(path, str(base), measure_size=True)
-            if node.size >= MIN_ROOT_SIZE:
-                children.append(node)
+        for idx, (path, size) in enumerate(candidates, 1):
+            self._emit(70 + int(25 * idx / total), f"Temporary {idx}/{total}: {path.name}")
+            node = self.make_real_node(path, str(base), known_size=size)
+            if not node.metadata["is_dir"]:
+                node.category = "Temporary file"
+                node.metadata["action_type"] = "delete_manual"
+                node.reason = "File owned by you under the system temp directory."
+            node.metadata["in_use_by"] = users.get(str(path), [])
+            children.append(node)
 
         children.sort(key=lambda x: x.size, reverse=True)
         root.children = children
-        root.size = sum(x.size for x in children)
-        return root if children else None
+        # The whole temp directory, not just the listed items, so the storage
+        # card can attribute it.
+        root.size = base_total if base_total is not None else sum(x.size for x in children)
+        return root
 
     def scan_known_caches(self):
         root = ScanNode(
@@ -767,6 +886,8 @@ class Scanner:
         kind = node.metadata.get("root_kind")
         if kind == "workspaces":
             return self.scan_workspaces()
+        if kind == "worktrees":
+            return self.scan_worktrees()
         if kind == "home":
             return self.scan_home()
         if kind == "temporary":

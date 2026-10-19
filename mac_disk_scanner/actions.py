@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .models import ScanNode
-from .utils import MIB, gdu_size, run, safe_remove_directory, safe_remove_path
+from .utils import MIB, gdu_size, open_file_users, run, safe_remove_directory, safe_remove_path
 
 ProgressCallback = Optional[Callable[[str], None]]
 VERIFY_REMAINING_THRESHOLD = 10 * MIB
@@ -30,13 +30,72 @@ class ActionRunner:
         if action_type == "project_clean":
             return self.run_project_clean(node, progress)
 
+        if action_type in ("delete_cache", "delete_manual", "worktree_remove"):
+            self.ensure_not_in_use(Path(node.path), progress)
+
         if action_type == "delete_cache":
             return self.delete_cache(node, progress)
 
         if action_type == "delete_manual":
             return self.delete_manual(node, progress)
 
+        if action_type == "worktree_remove":
+            return self.remove_worktree(node, progress)
+
         raise RuntimeError("This item has no executable action.")
+
+    def ensure_not_in_use(
+        self,
+        path: Path,
+        progress: ProgressCallback,
+    ) -> None:
+        # Checked at execution time: scan-time results are minutes old and a
+        # build or test may have started in the directory since.
+        self._emit(progress, f"Checking open files under {path}…")
+        users = open_file_users([path]).get(str(path))
+        if users:
+            raise RuntimeError(
+                f"{path} is in use by {', '.join(users[:5])}. "
+                "Stop those processes first."
+            )
+
+    # -----------------------------------------------------------------
+    # Git worktree removal
+    # -----------------------------------------------------------------
+
+    def remove_worktree(
+        self,
+        node: ScanNode,
+        progress: ProgressCallback = None,
+    ) -> tuple[int, str]:
+        info = node.metadata.get("worktree") or {}
+        common_dir = info.get("common_dir")
+        path = Path(node.path)
+
+        if not common_dir:
+            raise RuntimeError("Worktree repository is unknown; rescan Worktrees.")
+        if not path.exists():
+            return 0, "Already absent."
+
+        before = node.size if not node.metadata.get("size_pending", False) else 0
+
+        # No --force: git refuses when the worktree has modified or untracked
+        # files, or is locked, so uncommitted work is never discarded here.
+        self._emit(progress, f"git worktree remove {path}…")
+        rc, output = run(
+            ["git", f"--git-dir={common_dir}", "worktree", "remove", str(path)],
+            timeout=1800,
+        )
+        if rc != 0:
+            raise RuntimeError(f"git worktree remove failed: {output[-800:]}")
+
+        if path.exists():
+            raise RuntimeError(f"git worktree remove returned but {path} still exists")
+
+        self._emit(progress, f"Removed worktree {path.name}.")
+        return before, (
+            f"Removed worktree {path} (branch {info.get('branch')} kept)."
+        )
 
     # -----------------------------------------------------------------
     # Project clean

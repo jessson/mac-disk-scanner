@@ -13,7 +13,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static
+from textual.widgets import Button, DataTable, Label, ProgressBar, Static
 
 from .actions import ActionRunner
 from .cache import REGIONS, ScanCache
@@ -58,71 +58,95 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class CleanerApp(App):
     TITLE = "MacDiskScanner"
-    SUB_TITLE = "Generic filesystem scanner"
 
     CSS = """
-    Screen { background: #0a0d14; color: #e8edf7; }
-    Header { background: #10141d; color: #f4f7fb; }
+    Screen { background: #0b0e15; color: #e6ebf4; }
+
+    #topbar { height: 1; background: #111622; padding: 0 2; }
+    #topbar_title { width: 1fr; }
+    #topbar_disk { width: auto; color: #8b97ab; }
 
     #body { height: 1fr; }
-    #sidebar { width: 28; background: #0d1119; border-right: solid #232b3d; padding: 1; }
-    .side-label { height: 2; text-style: bold; color: #5d6a80; padding-left: 1; }
-    .nav { width: 100%; height: 3; margin-bottom: 1; background: #0d1119;
-           color: #9aa5b8; border: none; content-align: left middle; padding: 0 1; }
-    .nav:hover { background: #151a26; }
-    .nav.active { background: #151a26; color: #e8edf7; text-style: bold; }
+
+    #sidebar { width: 32; background: #0e121b; border-right: vkey #1f2736; padding: 1 1; }
+    .side-label { height: 2; color: #5d6a80; text-style: bold; padding: 0 1; }
+    .nav { width: 100%; height: 1; min-width: 0; margin-bottom: 1; padding: 0 1;
+           border: none; background: #0e121b; color: #9aa5b8;
+           content-align: left middle; text-align: left; text-style: none; }
+    .nav:hover { background: #151c2c; }
+    .nav:focus { text-style: none; }
+    .nav.active { background: #18213a; color: #ffffff; text-style: bold; }
     #spacer { height: 1fr; }
+    #disk_card { height: auto; padding: 1 1; background: #121826; border: round #222b3c; }
 
-    #disk_card { height: auto; min-height: 4; padding: 1; margin-top: 1;
-                              background: #151a26; border: round #232b3d; color: #9aa5b8; }
+    #center { width: 1fr; min-width: 60; }
+    #section { height: 4; padding: 1 2 0 2; }
+    #section_text { width: 1fr; }
+    #section_title { height: 1; }
+    #section_subtitle { height: 1; color: #8b97ab; }
+    #rescan_region { width: auto; min-width: 0; height: 1; margin-top: 1; padding: 0 1;
+                     border: none; background: #1b2335; color: #c9d3e3; text-style: bold; }
+    #rescan_region:hover { background: #243050; }
 
-    #center { width: 1fr; min-width: 66; }
-    #section { height: 5; padding: 1 2; }
-    #section_title { text-style: bold; color: #e8edf7; }
-    #section_subtitle { color: #9aa5b8; }
-    #rescan_region { width: 22; }
+    #tree { height: 1fr; margin: 0 2 1 2; background: #0e121b; border: round #1f2736;
+            scrollbar-size-horizontal: 0; }
+    #tree > .datatable--header { background: #0e121b; color: #6b778c; text-style: bold; }
+    #tree > .datatable--cursor { background: #1d2c4a; }
+    #tree > .datatable--hover { background: #141b2a; }
 
-    #tree { height: 1fr; margin: 0 2; background: #151a26; border: round #232b3d; }
-    DataTable > .datatable--header { background: #131826; color: #e8edf7; text-style: bold; }
-    DataTable > .datatable--cursor { background: #243650; color: white; }
+    #right { width: 42; background: #0e121b; border-left: vkey #1f2736; padding: 1 2; }
+    #details_title { height: auto; text-style: bold; }
+    #details_path { height: auto; color: #6b778c; margin-bottom: 1; }
+    #details_body { height: 1fr; }
+    #actions { height: auto; }
+    #actions Button { width: 100%; height: 3; margin-top: 1; border: none; text-style: bold; }
+    #run_action.danger { background: #b8323f; color: #ffffff; }
+    #run_action.safe { background: #1f7a4d; color: #ffffff; }
+    #run_action:disabled { background: #1b2335; color: #6b778c; }
+    #finder, #terminal { background: #1b2335; color: #c9d3e3; }
 
-    #right { width: 34; min-width: 32; background: #0d1119;
-             border-left: solid #232b3d; padding: 1 2; }
-    #details_title { height: auto; min-height: 2; text-style: bold; color: #e8edf7; }
-    #details_path { height: auto; max-height: 4; color: #5d6a80; margin-bottom: 1; }
-    #details_body { height: 1fr; color: #c5cfdb; }
-    #actions { height: auto; min-height: 18; border-top: solid #232b3d; padding-top: 1; }
-    #actions Button { width: 100%; height: 3; margin-bottom: 1; }
-
-    #progress_area { height: 5; padding: 0 2; background: #10141d;
-                     border-top: solid #232b3d; }
-    #progress_text { height: 1; color: #9aa5b8; }
-    ProgressBar { height: 2; }
-    #status { height: 2; padding: 0 2; background: #0d1119; color: #9aa5b8; }
+    #statusbar { height: 1; background: #111622; padding: 0 2; }
+    #status { width: 1fr; color: #8b97ab; }
+    #progress { width: 32; margin: 0 2; }
+    #progress Bar { width: 25; }
+    #progress Bar > .bar--bar { color: #4f8cff; background: #1b2335; }
+    #progress Bar > .bar--complete { color: #3ecf8e; background: #1b2335; }
+    #progress PercentageStatus { width: 5; color: #8b97ab; }
+    #hints { width: auto; color: #6b778c; }
     """
 
     BINDINGS = [
         ("enter", "toggle_expand", "Expand / scan"),
         ("left", "collapse", "Collapse"),
         ("right", "expand", "Expand"),
+        ("d", "run_action", "Run action"),
         ("r", "refresh_selected", "Refresh selected"),
         ("m", "measure_sizes", "Measure exact sizes"),
         ("shift+r", "force_full_scan", "Full scan"),
         ("q", "quit", "Quit"),
     ]
 
-    NAV = ("workspaces", "temporary", "caches", "home")
+    NAV = ("workspaces", "worktrees", "temporary", "caches", "home")
+
+    NAV_LABELS = {
+        "workspaces": "Workspaces",
+        "worktrees": "Worktrees",
+        "temporary": "Temporary",
+        "caches": "Caches",
+        "home": "Home",
+    }
 
     # region -> (scanner method name, display label)
     SCAN_METHODS = {
         "workspaces": ("scan_workspaces", "Scanning workspaces"),
+        "worktrees": ("scan_worktrees", "Scanning git worktrees"),
         "temporary": ("scan_private_tmp", "Scanning /private/tmp"),
         "caches": ("scan_known_caches", "Scanning known caches"),
         "home": ("scan_home", "Scanning Home (full)"),
     }
 
     # Regions scanned automatically at startup (Home stays manual-only).
-    QUICK_REGIONS = ("workspaces", "temporary", "caches")
+    QUICK_REGIONS = ("workspaces", "worktrees", "temporary", "caches")
 
     def __init__(self):
         super().__init__()
@@ -138,7 +162,7 @@ class CleanerApp(App):
 
         # Lazy expansion must be instant, so sizes of newly discovered
         # directories are calculated afterwards in the background.
-        # Only one du runs at a time to avoid hammering the SSD.
+        # Only one size scan runs at a time to avoid hammering the SSD.
         self._size_semaphore = asyncio.Semaphore(1)
         self._sizing_parents: dict[str, asyncio.Task] = {}
 
@@ -155,53 +179,66 @@ class CleanerApp(App):
         # finishes so they don't compete for disk I/O.
         self._deferred_size_parents: set[str] = set()
 
+        self._busy = False
+        self._busy_since = 0.0
+        self._status_text = "Ready."
+        self._disk_task: Optional[asyncio.Task] = None
+        self._snapshots: tuple[float, Optional[int]] = (0.0, None)
+
     def compose(self) -> ComposeResult:
-        yield Header()
+        with Horizontal(id="topbar"):
+            yield Static(
+                Text.assemble(("MacDiskScanner", "bold #ffffff"),
+                              ("  developer disk cleaner", "#6b778c")),
+                id="topbar_title",
+            )
+            yield Static("", id="topbar_disk")
 
         with Horizontal(id="body"):
             with Vertical(id="sidebar"):
-                yield Static("扫描区域", classes="side-label")
-                yield Button("Workspaces", id="nav_workspaces", classes="nav active")
-                yield Button("Temporary", id="nav_temporary", classes="nav")
-                yield Button("Caches", id="nav_caches", classes="nav")
-                yield Button("Home", id="nav_home", classes="nav")
+                yield Static("REGIONS", classes="side-label")
+                for key in self.NAV:
+                    yield Button(
+                        self.NAV_LABELS[key],
+                        id=f"nav_{key}",
+                        classes="nav active" if key == self.active_category else "nav",
+                    )
                 yield Static("", id="spacer")
-                yield Static("Disk", id="disk_card")
+                yield Static("", id="disk_card")
 
             with Vertical(id="center"):
                 with Horizontal(id="section"):
-                    with Vertical():
-                        yield Static("Workspaces", id="section_title")
-                        yield Static(
-                            "Development workspaces found by project marker files. "
-                            "Sizes are measured on demand.",
-                            id="section_subtitle",
-                        )
-                    yield Button("重新扫描", id="rescan_region")
-                table = DataTable(id="tree", cursor_type="row", zebra_stripes=True)
-                table.add_columns("Name", "Size", "Type", "Path")
-                yield table
+                    with Vertical(id="section_text"):
+                        yield Static("", id="section_title")
+                        yield Static("", id="section_subtitle")
+                    yield Button("↻ Rescan", id="rescan_region")
+                yield DataTable(id="tree", cursor_type="row")
 
             with Vertical(id="right"):
                 yield Static("Select an item", id="details_title")
                 yield Static("", id="details_path")
-                yield Static("Click a directory to inspect its next real filesystem level.",
-                             id="details_body")
+                yield Static("", id="details_body")
                 with Vertical(id="actions"):
-                    yield Button("No Action", id="run_action")
+                    yield Button("", id="run_action")
                     yield Button("Open in Finder", id="finder")
                     yield Button("Open in Terminal", id="terminal")
 
-        with Vertical(id="progress_area"):
-            yield Static("Ready.", id="progress_text")
-            yield ProgressBar(total=100, id="progress")
-
-        yield Static(
-            "Unknown directories are inspect-only. Projects expose standard clean commands; "
-            "explicit cache/temp paths expose delete.",
-            id="status",
-        )
-        yield Footer()
+        with Horizontal(id="statusbar"):
+            yield Static("Ready.", id="status")
+            yield ProgressBar(total=100, show_eta=False, id="progress")
+            yield Static(
+                Text.assemble(
+                    *[
+                        part
+                        for key, label in (
+                            ("↵", "open"), ("←→", "fold"), ("d", "action"),
+                            ("r", "refresh"), ("R", "full scan"), ("q", "quit"),
+                        )
+                        for part in ((key, "bold #c9d3e3"), (f" {label}  ", "#6b778c"))
+                    ]
+                ),
+                id="hints",
+            )
 
     def on_mount(self):
         # App.on_mount may run before every child widget is queryable.
@@ -215,6 +252,7 @@ class CleanerApp(App):
             5.0,
             self.update_disk_card,
         )
+        self.set_interval(1.0, self._tick_status)
 
         pending = []
         stale = []
@@ -238,31 +276,39 @@ class CleanerApp(App):
 
         self.set_default_expansion()
         self.refresh_ui()
+        # Column widths depend on the laid-out table width.
+        self.call_after_refresh(self.refresh_table)
 
         if pending:
             self.set_progress(
                 5,
                 f"Scanning quick regions: {', '.join(pending)}…",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Quick region scans are running in the background. "
                 "Home (full scan) is manual only."
             )
             asyncio.create_task(self.scan_regions(pending))
         elif stale:
             self.set_progress(100, "Loaded cached results (some regions stale).")
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Some regions are older than 30 minutes. "
                 "Use per-region 重新扫描 or the full scan to refresh them."
             )
         else:
             self.set_progress(100, "Loaded cached results.")
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "All regions are fresh. Home full scan stays manual."
             )
         self.schedule_workspace_sizing()
 
     # ---------- lookup ----------
+
+    def main_widget(self, selector, expect_type=None):
+        # App.query_one searches the active screen; while a ConfirmScreen is
+        # on top, timers and background tasks would fail to find the main
+        # widgets. They all live on the bottom (default) screen.
+        return self.screen_stack[0].query_one(selector, expect_type)
 
     def all_nodes(self):
         for root in self.all_region_roots():
@@ -287,7 +333,7 @@ class CleanerApp(App):
         return [root] if root else []
 
     def current_node(self):
-        table = self.query_one("#tree", DataTable)
+        table = self.main_widget("#tree", DataTable)
         row = table.cursor_row
         if row < 0 or row >= len(self.visible_nodes):
             return None
@@ -295,19 +341,56 @@ class CleanerApp(App):
 
     # ---------- progress / size ----------
 
-    def set_progress(self, pct: int, text: str):
-        self.query_one("#progress", ProgressBar).update(progress=max(0, min(100, pct)))
-        self.query_one("#progress_text", Static).update(text)
+    def set_progress(self, pct: int, text: str, busy: Optional[bool] = None):
+        pct = max(0, min(100, pct))
+        busy = pct < 100 if busy is None else busy
+        if busy and not self._busy:
+            self._busy_since = time.monotonic()
+        self._busy = busy
+        self.main_widget("#progress", ProgressBar).update(progress=pct)
+        self.set_status(text)
+
+    def set_status(self, text: str):
+        self._status_text = str(text).replace("\n", " ")
+        self._render_status()
+
+    def _render_status(self):
+        line = Text()
+        if self._busy:
+            line.append("⟳ ", style="bold #4f8cff")
+        line.append(self._status_text)
+        if self._busy:
+            # Some steps (e.g. one GDU pass over Home) report no progress for
+            # tens of seconds; the elapsed time shows the work is alive.
+            elapsed = int(time.monotonic() - self._busy_since)
+            line.append(f" · {elapsed}s", style="#6b778c")
+        self.main_widget("#status", Static).update(line)
+
+    def _tick_status(self):
+        if self._busy:
+            self._render_status()
 
     def make_progress_scanner(self):
         def progress(pct: int, message: str):
             self.call_from_thread(self.set_progress, pct, message)
         return Scanner(progress=progress)
 
+    def node_size(self, node: ScanNode) -> int:
+        # Virtual groups (Workspaces, Caches, Worktrees) have no size of
+        # their own; show what their measured members add up to.
+        if node.metadata.get("virtual"):
+            return sum(
+                c.size for c in node.children
+                if not c.metadata.get("size_pending", False)
+            )
+        return node.size
+
     def display_size(self, node: ScanNode):
         # "…" means discovered but background size calculation has not
         # completed yet. It is not zero and it is not unknown forever.
-        return "…" if node.metadata.get("size_pending", False) else human_size(node.size)
+        if node.metadata.get("size_pending", False):
+            return "…"
+        return human_size(self.node_size(node))
 
     # ---------- background directory sizing ----------
 
@@ -361,7 +444,7 @@ class CleanerApp(App):
         ]
 
         if not pending_paths:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "No real direct children to measure."
             )
             return
@@ -371,38 +454,19 @@ class CleanerApp(App):
             f"Exact child sizing {parent.name} "
             f"({len(pending_paths)} direct children)…",
         )
-        self.query_one("#status", Static).update(
-            "One background du -d 1 traversal is calculating all direct-child sizes. "
-            "It does not run du separately for every child."
+        self.set_status(
+            "One background GDU pass is calculating all direct-child sizes."
         )
 
         scanner = Scanner()
 
         try:
             async with self._size_semaphore:
-                scan_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        scanner.measure_children_sizes,
-                        parent,
-                    )
+                self.set_progress(35, f"Exact child sizing {parent.name}…")
+                sizes = await asyncio.to_thread(
+                    scanner.measure_children_sizes,
+                    parent,
                 )
-
-                # GDU does not expose a reliable machine-readable percentage
-                # for this parsing mode. Show elapsed time instead of a fake
-                # 1/N percentage, so the UI clearly remains alive.
-                started = time.monotonic()
-
-                while not scan_task.done():
-                    elapsed = time.monotonic() - started
-
-                    self.set_progress(
-                        35,
-                        f"Exact child sizing {parent.name} — "
-                        f"{elapsed:.1f}s elapsed",
-                    )
-                    await asyncio.sleep(0.5)
-
-                sizes = await scan_task
 
         except asyncio.CancelledError:
             return
@@ -411,7 +475,7 @@ class CleanerApp(App):
                 100,
                 f"Exact child size scan failed: {parent.name}",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"Could not calculate sizes under {parent.name}: {exc}"
             )
             return
@@ -445,7 +509,7 @@ class CleanerApp(App):
             f"Exact sizes updated {updated}/{len(pending_paths)} "
             f"children under {parent.name}",
         )
-        self.query_one("#status", Static).update(
+        self.set_status(
             "Exact direct-child size calculation finished."
         )
 
@@ -472,9 +536,10 @@ class CleanerApp(App):
         """
         self._operation_running = running
 
-        action_btn = self.query_one("#run_action", Button)
-
         if running:
+            action_btn = self.main_widget("#run_action", Button)
+            action_btn.remove_class("danger", "safe")
+            action_btn.display = True
             action_btn.disabled = True
             action_btn.label = label or "Running in background…"
             return
@@ -498,7 +563,7 @@ class CleanerApp(App):
         # Project commands do not expose a meaningful percentage. Keep a clear
         # non-final "running" state and show the exact current stage.
         self.set_progress(45, message)
-        self.query_one("#status", Static).update(message)
+        self.set_status(message)
 
     def make_action_progress_callback(self):
         def progress(message: str):
@@ -531,7 +596,7 @@ class CleanerApp(App):
                 node.children = kept
 
             if removed_measured:
-                if node.metadata.get("container"):
+                if node.metadata.get("virtual"):
                     node.size = sum(
                         c.size
                         for c in node.children
@@ -774,58 +839,126 @@ Math.round(ObjC.unwrap(ref[0]));
                 None,
             )
 
+    def _local_snapshot_count(self) -> Optional[int]:
+        """Time Machine local snapshots of the Data volume, cached for 60 s."""
+        checked_at, count = self._snapshots
+        if time.time() - checked_at < 60:
+            return count
+        try:
+            proc = subprocess.run(
+                ["/usr/bin/tmutil", "listlocalsnapshots", "/"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, timeout=10,
+            )
+            count = sum(
+                1 for line in proc.stdout.splitlines()
+                if line.startswith("com.apple.")
+            ) if proc.returncode == 0 else None
+        except Exception:
+            count = None
+        self._snapshots = (time.time(), count)
+        return count
+
+    def _disk_snapshot(self):
+        return self._filesystem_usage(), self._local_snapshot_count()
+
     def update_disk_card(self):
         """
-        Update the compact Storage card.
-
-        This callback may fire during startup/shutdown or between screen
-        refreshes. If the widget is not mounted yet, simply skip this tick.
+        Refresh the storage card off the UI thread: diskutil + Foundation
+        take ~0.4 s, which froze the interface on every 5 s tick.
         """
+        if self._disk_task and not self._disk_task.done():
+            return
+        self._disk_task = asyncio.create_task(self._update_disk_card())
+
+    async def _update_disk_card(self):
         try:
-            disk_card = self.query_one(
-                "#disk_card",
-                Static,
-            )
+            usage, snapshots = await asyncio.to_thread(self._disk_snapshot)
+        except Exception:
+            usage, snapshots = None, None
+
+        try:
+            disk_card = self.main_widget("#disk_card", Static)
+            topbar = self.main_widget("#topbar_disk", Static)
         except Exception:
             return
 
-        try:
-            (
-                total,
-                physical_used,
-                physical_free,
-                important_available,
-            ) = self._filesystem_usage()
+        if usage is None:
+            disk_card.update(Text("STORAGE\n\nUnavailable", style="#6b778c"))
+            return
 
-            available = (
-                important_available
-                if important_available is not None
-                else physical_free
-            )
+        total, physical_used, physical_free, important_available = usage
+        topbar.update(
+            f"Macintosh HD · {human_size(physical_used)} used · "
+            f"{human_size(physical_free)} free"
+        )
 
-            available = max(
-                0,
-                min(total, available),
-            )
-            used = max(
-                0,
-                total - available,
-            )
+        # Every row is a slice of the container, so the rows add up to its
+        # capacity. Purgeable space (mostly local snapshots) is counted as
+        # used by APFS but as available by macOS, so it gets its own slice.
+        purgeable = 0
+        if important_available is not None:
+            purgeable = max(0, min(important_available - physical_free, physical_used))
 
-            disk_card.update(
-                "[b]Storage[/b]\n"
-                f"Used: {human_size(used)}\n"
-                f"Available: {human_size(available)}"
-            )
+        home = self.region_roots.get("home")
+        tmp = self.region_roots.get("temporary")
+        home_size = (
+            home.size
+            if home is not None and not home.metadata.get("size_pending")
+            else None
+        )
+        tmp_size = tmp.size if tmp is not None else 0
 
-        except Exception:
-            # The widget exists, so showing a compact fallback is now safe.
-            try:
-                disk_card.update(
-                    "[b]Storage[/b]\nUnavailable"
-                )
-            except Exception:
-                pass
+        slices = []
+        if home_size is not None:
+            slices.append(("Home", home_size, "#4f8cff"))
+        slices.append(("/private/tmp", tmp_size, "#2fb5c9"))
+        known = sum(v for _, v, _ in slices)
+        slices.append((
+            "Other" if home_size is not None else "Other (no Home)",
+            max(0, physical_used - purgeable - known),
+            "#6b778c",
+        ))
+        slices.append(("Purgeable", purgeable, "#8a6fd1"))
+        slices.append(("Free", physical_free, "#2a3346"))
+
+        width = 24
+        t = Text.assemble(
+            ("STORAGE", "bold #5d6a80"),
+            (f"{human_size(total):>17}", "#6b778c"),
+            "\n\n",
+        )
+        denominator = max(1, sum(v for _, v, _ in slices))
+        used_cells = 0
+        for i, (_, value, color) in enumerate(slices):
+            cells = (
+                round(value / denominator * width)
+                if i < len(slices) - 1
+                else width - used_cells
+            )
+            cells = max(0, min(cells, width - used_cells))
+            used_cells += cells
+            t.append("█" * cells, style=color)
+        t.append("\n\n")
+
+        for label, value, color in slices:
+            t.append("■ ", style=color)
+            t.append(f"{label:<15}")
+            t.append(f"{human_size(value):>8}\n", style="bold")
+
+        t.append("\n")
+        t.append(f"{'Available':<17}", style="#c9d3e3")
+        t.append(f"{human_size(physical_free + purgeable):>8}\n", style="bold #3ecf8e")
+        # Lines stay within the 24-cell card width so nothing wraps.
+        notes = ["(Free + Purgeable)", ""]
+        if snapshots:
+            notes.append(f"Purgeable: {snapshots} snapshots")
+            notes.append("+ caches macOS can free")
+        notes.append("Other: apps/system/users")
+        if home_size is None:
+            notes.append("Scan Home to split it")
+        t.append("\n".join(notes), style="#6b778c")
+        disk_card.update(t)
 
     def can_expand(self, node: ScanNode):
         return bool(
@@ -835,26 +968,6 @@ Math.round(ObjC.unwrap(ref[0]));
                 and not node.metadata.get("children_loaded")
             )
         )
-
-    def name_text(self, node: ScanNode, depth: int):
-        t = Text()
-        t.append("  " * depth)
-        if self.can_expand(node):
-            if node.path in self.expanded and node.metadata.get("children_loaded"):
-                t.append("▼ ", style="cyan")
-            else:
-                t.append("▶ ", style="cyan")
-        else:
-            t.append("  ")
-
-        if node.metadata.get("project"):
-            t.append("▣ ", style="bright_blue")
-        elif node.metadata.get("action_type") == "delete_cache":
-            t.append("■ ", style="magenta")
-        else:
-            t.append("■ ", style="bright_black")
-        t.append(node.name)
-        return t
 
     def flatten_visible(self):
         rows = []
@@ -879,19 +992,102 @@ Math.round(ObjC.unwrap(ref[0]));
         self.visible_nodes = [node for _, node in rows]
         return rows
 
+    # Kind colour by what the user can do with the item.
+    ACTION_COLORS = {
+        "delete_cache": "#f0b357",
+        "worktree_remove": "#b48cff",
+        "project_clean": "#4f8cff",
+        "delete_manual": "#8b97ab",
+        "none": "#6b778c",
+    }
+
+    def name_text(self, node: ScanNode, depth: int, width: int) -> Text:
+        t = Text("  " * depth)
+        if self.can_expand(node):
+            open_ = node.path in self.expanded and node.metadata.get("children_loaded")
+            t.append("▾ " if open_ else "▸ ", style="#6b778c")
+        else:
+            t.append("  ")
+        t.append(node.name, style="bold" if depth == 0 else "")
+        t.truncate(width, overflow="ellipsis")
+        return t
+
+    def size_text(self, node: ScanNode) -> Text:
+        if node.metadata.get("size_pending", False):
+            return Text("…", justify="right", style="#6b778c")
+        size = self.node_size(node)
+        style = "bold #ffffff" if size >= 1024 ** 3 else "#c9d3e3"
+        return Text(human_size(size), justify="right", style=style)
+
+    def share_text(self, node: ScanNode, base: int, width: int = 10) -> Text:
+        if node.metadata.get("size_pending", False) or base <= 0:
+            return Text("")
+        ratio = min(1.0, node.size / base)
+        cells = ratio * width
+        full = int(cells)
+        bar = Text("█" * full, style="#4f8cff")
+        partial = " ▏▎▍▌▋▊▉"[int((cells - full) * 8)].strip()
+        if full < width and partial:
+            bar.append(partial, style="#4f8cff")
+        bar.pad_right(width - len(bar))
+        bar.append(f" {ratio * 100:4.1f}%", style="#6b778c")
+        return bar
+
+    def kind_text(self, node: ScanNode) -> Text:
+        action = node.metadata.get("action_type", "none")
+        if node.metadata.get("in_use_by"):
+            return Text("● in use", style="#e5534b")
+        return Text(f"● {node.category}", style=self.ACTION_COLORS.get(action, "#6b778c"))
+
+    def modified_text(self, node: ScanNode) -> Text:
+        mtime = node.metadata.get("mtime")
+        if not mtime:
+            return Text("")
+        if time.time() - mtime < 24 * 3600:
+            return Text("today", style="#f0b357")
+        local = time.localtime(mtime)
+        fmt = "%b %d" if local.tm_year == time.localtime().tm_year else "%Y-%m"
+        return Text(time.strftime(fmt, local), style="#8b97ab")
+
+    def region_share_base(self) -> int:
+        roots = self.category_roots()
+        if not roots:
+            return 0
+        root = roots[0]
+        measured = sum(
+            c.size for c in root.children
+            if not c.metadata.get("size_pending", False)
+        )
+        return max(root.size, measured)
+
     def refresh_table(self):
-        table = self.query_one("#tree", DataTable)
-        table.clear()
+        table = self.main_widget("#tree", DataTable)
         rows = self.flatten_visible()
 
+        # Columns are rebuilt on each refresh so Name absorbs the free width;
+        # fixed widths + cell padding (2 per column) make up the rest.
+        fixed = {"Size": 8, "Share": 16, "Kind": 14, "Modified": 8}
+        available = max(0, table.size.width - 4) or 90
+        name_width = max(20, available - sum(fixed.values()) - 2 * (len(fixed) + 1))
+
+        table.clear(columns=True)
+        table.add_column("Name", width=name_width)
+        table.add_column(Text("Size", justify="right"), width=fixed["Size"])
+        table.add_column("Share", width=fixed["Share"])
+        table.add_column("Kind", width=fixed["Kind"])
+        table.add_column("Modified", width=fixed["Modified"])
+
+        base = self.region_share_base()
         for idx, (depth, node) in enumerate(rows):
+            kind = self.kind_text(node)
+            kind.truncate(fixed["Kind"], overflow="ellipsis")
             table.add_row(
-                self.name_text(node, depth),
-                self.display_size(node),
-                node.category,
-                node.path
-                if not node.metadata.get("virtual", False)
-                else "(virtual)",
+                self.name_text(node, depth, name_width),
+                self.size_text(node),
+                # The region root is always 100 %; leave it blank.
+                self.share_text(node, base) if depth else Text(""),
+                kind,
+                self.modified_text(node),
                 key=str(idx),
             )
 
@@ -910,114 +1106,74 @@ Math.round(ObjC.unwrap(ref[0]));
             self.selected_path = None
             self.clear_details()
 
-    def refresh_nav(self):
-        labels = {
-            "workspaces": "Workspaces",
-            "temporary": "Temporary",
-            "caches": "Caches",
-            "home": "Home",
-        }
-        icons = {
-            "workspaces": "▣",
-            "temporary": "◇",
-            "caches": "◈",
-            "home": "⌂",
-        }
+    def on_resize(self, _event):
+        self.call_after_refresh(self.refresh_table)
 
-        for key, label in labels.items():
-            if key == "workspaces":
-                root = self.root_by_kind("workspaces")
-                if root is None:
-                    size_text = "—"
-                else:
-                    size_sum = sum(
-                        c.size for c in root.children
-                        if not c.metadata.get("size_pending", False)
-                    )
-                    pending = sum(
-                        1 for c in root.children
-                        if c.metadata.get("size_pending", False)
-                    )
-                    if pending:
-                        size_text = (
-                            f"{human_size(size_sum)}…"
-                            if size_sum
-                            else "…"
-                        )
-                    else:
-                        size_text = (
-                            human_size(size_sum)
-                            if size_sum
-                            else "0"
-                        )
-            else:
-                root = self.root_by_kind(key)
-                pending = bool(
-                    root
-                    and root.metadata.get(
-                        "size_pending",
-                        False,
-                    )
-                )
-                size = (
-                    root.size
-                    if root
-                    and not pending
-                    else 0
-                )
-                size_text = (
-                    "…"
-                    if pending
-                    else (
-                        human_size(size)
-                        if size
-                        else "—"
-                    )
-                )
-
-            dot = self._nav_status_dot(key)
-
-            self.query_one(
-                f"#nav_{key}",
-                Button,
-            ).label = Text.from_markup(
-                f"{dot} {icons[key]} {label}   [#9aa5b8]{size_text}[/]"
-            )
-
-    def _nav_status_dot(self, region: str) -> str:
-        root = self.region_roots.get(region)
-        meta = self.cache.region_meta(region)
+    def region_size_text(self, key: str) -> str:
+        root = self.root_by_kind(key)
         if root is None:
-            return "[dim]○[/]"
-        if meta and meta["stale"]:
-            return "[yellow]◐[/]"
-        return "[green]●[/]"
+            return "—"
+        if root.metadata.get("virtual"):
+            measured = sum(
+                c.size for c in root.children
+                if not c.metadata.get("size_pending", False)
+            )
+            pending = any(c.metadata.get("size_pending", False) for c in root.children)
+            text = human_size(measured) if measured else ("" if pending else "0")
+            return f"{text}…" if pending else text
+        if root.metadata.get("size_pending", False):
+            return "…"
+        return human_size(root.size)
+
+    def refresh_nav(self):
+        for key in self.NAV:
+            dot, dot_style = self._nav_status_dot(key)
+            label = Text.assemble(
+                (f"{dot} ", dot_style),
+                f"{self.NAV_LABELS[key]:<13}",
+                (f"{self.region_size_text(key):>9}", "bold"),
+            )
+            self.main_widget(f"#nav_{key}", Button).label = label
+
+    def _nav_status_dot(self, region: str) -> tuple[str, str]:
+        meta = self.cache.region_meta(region)
+        if self._scanning_regions and region in self._scanning_regions:
+            return "⟳", "#4f8cff"
+        if meta is None:
+            return "○", "#5d6a80"
+        if meta["stale"]:
+            return "◐", "#f0b357"
+        return "●", "#3ecf8e"
+
+    SECTION_INFO = {
+        "workspaces": ("Workspaces", "", "Projects by marker files"),
+        "worktrees": ("Worktrees", "", "Linked git worktrees"),
+        "temporary": ("Temporary", "/private/tmp", "Your items ≥ 10 MiB"),
+        "caches": ("Caches", "", "Known developer caches"),
+        "home": ("Home", "~", "Full scan covers every region"),
+    }
 
     def refresh_section(self):
-        data = {
-            "workspaces": (
-                "Workspaces",
-                "Development workspaces found by project marker files. Sizes are measured on demand.",
-            ),
-            "temporary": (
-                "Temporary",
-                "Explicit /private/tmp development-temp candidates.",
-            ),
-            "caches": (
-                "Caches",
-                "Explicit known reproducible developer caches.",
-            ),
-            "home": (
-                "Home",
-                "全盘扫描结果：家目录大目录 + 精确大小。\"全盘扫描\"覆盖全部四个区域"
-                "（工作区 + 临时 + 缓存 + 本视图），入口在本视图的重新扫描或工具栏 Full Scan。",
-            ),
-        }
-        title, subtitle = data[self.active_category]
-        self.query_one("#section_title", Static).update(title)
-        self.query_one("#section_subtitle", Static).update(subtitle)
-        self.query_one("#rescan_region", Button).disabled = (
-            self.active_category not in REGIONS
+        title, where, summary = self.SECTION_INFO[self.active_category]
+        root = self.root_by_kind(self.active_category)
+        meta = self.cache.region_meta(self.active_category)
+
+        parts = [summary]
+        if root is not None:
+            parts.append(f"{len(root.children)} items")
+            parts.append(self.region_size_text(self.active_category))
+        if meta is None:
+            parts.append("not scanned")
+        else:
+            age = self.cache.describe_age(meta["age"])
+            parts.append(f"scanned {age} ago" + (" (stale)" if meta["stale"] else ""))
+
+        self.main_widget("#section_title", Static).update(
+            Text.assemble((title, "bold"), (f"  {where}" if where else "", "#6b778c"))
+        )
+        self.main_widget("#section_subtitle", Static).update(" · ".join(parts))
+        self.main_widget("#rescan_region", Button).label = (
+            "↻ Full scan" if self.active_category == "home" else "↻ Rescan"
         )
 
     def refresh_ui(self):
@@ -1029,103 +1185,118 @@ Math.round(ObjC.unwrap(ref[0]));
 
     def show_details(self, node: ScanNode):
         self.selected_path = node.path
-        self.query_one("#details_title", Static).update(node.name)
-        self.query_one("#details_path", Static).update(
+        self.main_widget("#details_title", Static).update(Text(node.name, style="bold"))
+        self.main_widget("#details_path", Static).update(
             "Virtual group" if node.metadata.get("virtual") else node.path
         )
 
-        lines = [
-            "[b]Details[/b]",
-            "",
-            f"Size             [b]{self.display_size(node)}[/b]",
-            f"Type             {node.category}",
-            f"Scanned          {self.cache.describe_age(max(0, time.time() - node.scanned_at))} ago",
-        ]
+        t = Text()
+
+        def row(key: str, value: str, style: str = "#e6ebf4"):
+            t.append(f"{key:<11}", style="#6b778c")
+            t.append(f"{value}\n", style=style)
+
+        def heading(text: str):
+            t.append(f"\n{text}\n", style="bold")
+
+        row("Size", self.display_size(node))
+        row("Kind", node.category)
+        mtime = node.metadata.get("mtime")
+        if mtime:
+            row("Modified", time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime)))
+        row("Scanned", f"{self.cache.describe_age(max(0, time.time() - node.scanned_at))} ago")
+
+        in_use = node.metadata.get("in_use_by") or []
+        if in_use:
+            row("In use", ", ".join(in_use[:3]), "#e5534b")
+
+        worktree = node.metadata.get("worktree")
+        if worktree:
+            row("Branch", worktree.get("branch") or "?")
+            changes = worktree.get("changes")
+            row(
+                "Changes",
+                "unknown" if changes is None else ("none" if changes == 0 else str(changes)),
+                "#e6ebf4" if changes == 0 else "#f0b357",
+            )
+            row("Repo", str(Path(worktree.get("common_dir", "")).parent))
 
         project = node.metadata.get("project")
         if project:
-            lines += [
-                "",
-                "[b]Project[/b]",
-                f"Type             {project.get('project_type')}",
-                f"Detected by      {project.get('detected_by')}",
-                f"Command          {project.get('label')}",
-            ]
+            heading("Project")
+            row("Type", str(project.get("project_type")))
+            row("Detected", str(project.get("detected_by")))
+            row("Clean", str(project.get("label")))
             if project.get("note"):
-                lines.append(f"Note             {project.get('note')}")
+                t.append(f"{project.get('note')}\n", style="#8b97ab")
 
-        action = node.metadata.get("action_type", "none")
-        lines += ["", "[b]Available action[/b]"]
-        if action == "project_clean":
-            lines += [
-                f"[green]{project.get('label')}[/green]",
-                "Runs in this exact project directory.",
-            ]
-        elif action == "delete_cache":
-            lines += [
-                "[red]Delete explicit cache/temp directory[/red]",
-                node.reason,
-            ]
-        elif action == "delete_manual":
-            lines += [
-                "[red]Delete permanently…[/red]",
-                "This removes exactly the selected file/directory.",
-                node.reason,
-            ]
-        else:
-            lines += ["Inspect only", node.reason]
+        heading({
+            "delete_cache": "Why deletable",
+            "delete_manual": "Manual delete",
+            "worktree_remove": "Why removable",
+            "project_clean": "Project clean",
+        }.get(node.metadata.get("action_type", "none"), "Inspect only"))
+        t.append(f"{node.reason}\n", style="#c9d3e3")
 
-        if self.can_expand(node) and not node.metadata.get("children_loaded"):
-            lines += [
-                "",
-                "[cyan]Contents not scanned yet.[/cyan]",
-                "Scan & Expand reads only the next real filesystem level.",
-                "No recursive size scan is run first.",
-            ]
+        largest = sorted(
+            (c for c in node.children if not c.metadata.get("size_pending", False)),
+            key=lambda c: c.size,
+            reverse=True,
+        )[:5]
+        if largest and not node.metadata.get("container"):
+            heading("Largest inside")
+            for child in largest:
+                name = child.name + ("/" if child.metadata.get("is_dir") else "")
+                t.append(f"  {name[:22]:<23}", style="#c9d3e3")
+                t.append(f"{human_size(child.size):>8}\n", style="bold")
+        elif self.can_expand(node) and not node.metadata.get("children_loaded"):
+            t.append("\nPress ↵ to list the next level.\n", style="#6b778c")
 
-        self.query_one("#details_body", Static).update("\n".join(lines))
+        self.main_widget("#details_body", Static).update(t)
         self.update_action_buttons(node)
 
     def clear_details(self):
-        self.query_one("#details_title", Static).update("No items")
-        self.query_one("#details_path", Static).update("")
-        self.query_one("#details_body", Static).update("Nothing indexed here.")
+        self.main_widget("#details_title", Static).update("No items")
+        self.main_widget("#details_path", Static).update("")
+        self.main_widget("#details_body", Static).update(
+            Text("Nothing found in this region.", style="#6b778c")
+        )
         self.update_action_buttons(None)
 
     def update_action_buttons(self, node):
-        action_btn = self.query_one("#run_action", Button)
+        action_btn = self.main_widget("#run_action", Button)
+        action_btn.remove_class("danger", "safe")
 
-        if not node:
-            action_btn.disabled = True
-            action_btn.label = "No Action"
-            return
-
-        action = node.metadata.get("action_type", "none")
-
-        # A filesystem operation may continue in the background while the user
-        # browses the tree, but starting a second clean/delete is blocked.
         if self._operation_running:
+            # Browsing stays available, but a second clean/delete is blocked.
+            action_btn.display = True
             action_btn.disabled = True
             action_btn.label = "Operation running…"
             return
 
+        action = node.metadata.get("action_type", "none") if node else "none"
+        if action == "none":
+            action_btn.display = False
+            return
+
+        action_btn.display = True
+        size_text = self.display_size(node)
+
+        # Scan-time in-use data may be stale; the runner re-checks open
+        # files right before deleting, so the button stays enabled.
         if action == "project_clean":
             project = node.metadata.get("project") or {}
             action_btn.disabled = False
-            action_btn.variant = "success"
+            action_btn.add_class("safe")
             action_btn.label = project.get("label", "Run project clean")
-        elif action in ("delete_cache", "delete_manual"):
+        elif action == "worktree_remove":
             action_btn.disabled = False
-            action_btn.variant = "error"
-            size_text = (
-                "…"
-                if node.metadata.get("size_pending")
-                else human_size(node.size)
-            )
-            action_btn.label = f"Delete {size_text}"
+            action_btn.add_class("danger")
+            action_btn.label = f"Remove worktree  {size_text}"
         else:
-            action_btn.disabled = True
-            action_btn.label = "No Action"
+            action_btn.disabled = False
+            action_btn.add_class("danger")
+            action_btn.label = f"Delete  {size_text}"
 
     # ---------- navigation ----------
 
@@ -1140,7 +1311,7 @@ Math.round(ObjC.unwrap(ref[0]));
         self.active_category = category
         self.selected_path = None
         for key in self.NAV:
-            btn = self.query_one(f"#nav_{key}", Button)
+            btn = self.main_widget(f"#nav_{key}", Button)
             if key == category:
                 btn.add_class("active")
             else:
@@ -1155,7 +1326,7 @@ Math.round(ObjC.unwrap(ref[0]));
         # until the clean/delete operation finishes. Other directories remain
         # fully browsable.
         if self.is_under_active_operation(node.path):
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"{node.name} is currently being modified. "
                 "It will refresh automatically when the operation finishes; "
                 "you can keep browsing other directories."
@@ -1169,7 +1340,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 5,
                 f"Listing direct children: {node.name}",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Reading only the real next filesystem level. "
                 "Recursive size calculation is skipped."
             )
@@ -1190,7 +1361,7 @@ Math.round(ObjC.unwrap(ref[0]));
         except Exception as exc:
             if not operation_in_background:
                 self.set_progress(100, "Scan failed.")
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"Scan failed: {exc}"
             )
             return
@@ -1202,7 +1373,7 @@ Math.round(ObjC.unwrap(ref[0]));
         self.refresh_ui()
 
         # Expand first so the UI is immediate, then calculate the exact
-        # direct-child sizes in the background. This is one `du -d 1` traversal
+        # direct-child sizes in the background. This is one GDU depth-1 traversal
         # for the expanded directory, not one scan per child.
         self.schedule_child_sizing(node.path)
 
@@ -1211,7 +1382,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 100,
                 f"Expanded: {node.name}",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Expanded immediately. Exact child sizes are now being "
                 "calculated in the background."
             )
@@ -1240,7 +1411,7 @@ Math.round(ObjC.unwrap(ref[0]));
             return
 
         if self._operation_running:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "A clean/delete operation is running; exact sizing is unavailable."
             )
             return
@@ -1250,7 +1421,7 @@ Math.round(ObjC.unwrap(ref[0]));
             or not node.metadata.get("children_loaded", False)
             or not node.children
         ):
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Expand this directory first, then measure its direct children."
             )
             return
@@ -1293,7 +1464,7 @@ Math.round(ObjC.unwrap(ref[0]));
 
         current = parent
         while current:
-            if current.metadata.get("container"):
+            if current.metadata.get("virtual"):
                 current.size = sum(
                     x.size for x in current.children
                     if not x.metadata.get("size_pending")
@@ -1303,6 +1474,7 @@ Math.round(ObjC.unwrap(ref[0]));
             current = self.find_node(current.parent_path)
 
     def save_cache(self):
+        # In-place edits keep each region's original scan time.
         for region, root in self.region_roots.items():
             if root is not None:
                 self.cache.save_region(region, [root])
@@ -1325,6 +1497,7 @@ Math.round(ObjC.unwrap(ref[0]));
         to_scan, skip = self.build_full_scan_plan()
         labels = {
             "workspaces": "开发工作区（重新发现）",
+            "worktrees": "Git worktrees",
             "temporary": "临时目录 /private/tmp",
             "caches": "缓存目录 Caches",
             "home": "Home 全量（大目录 + 精确大小）",
@@ -1333,7 +1506,7 @@ Math.round(ObjC.unwrap(ref[0]));
         if to_scan:
             lines += [f"• {labels[r]}" for r in to_scan]
         else:
-            lines.append("• （4 个区域均为最新，无需扫描）")
+            lines.append("• （所有区域均为最新，无需扫描）")
         if skip:
             lines += ["", "跳过（30 分钟内已扫）:"]
             lines += [
@@ -1345,7 +1518,7 @@ Math.round(ObjC.unwrap(ref[0]));
     @work(exclusive=True, group="filesystem_action")
     async def run_full_scan(self):
         if self._scanning_regions:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "A region scan is already running."
             )
             return
@@ -1361,14 +1534,14 @@ Math.round(ObjC.unwrap(ref[0]));
             ok = await self.push_screen_wait(
                 ConfirmScreen(
                     "全盘扫描",
-                    "4 个区域均为最新（30 分钟内已扫），当前无需扫描。\n\n"
+                    "所有区域均为最新（30 分钟内已扫），当前无需扫描。\n\n"
                     "仍要强制全部重扫吗？",
                     destructive=False,
                 )
             )
             if not ok:
                 self.set_progress(100, "All regions are fresh; nothing to do.")
-                self.query_one("#status", Static).update(
+                self.set_status(
                     "All regions are fresh; full scan not needed."
                 )
                 return
@@ -1383,8 +1556,8 @@ Math.round(ObjC.unwrap(ref[0]));
             )
         )
         if not ok:
-            self.set_progress(0, "Full scan cancelled.")
-            self.query_one("#status", Static).update("Full scan cancelled.")
+            self.set_progress(0, "Full scan cancelled.", busy=False)
+            self.set_status("Full scan cancelled.")
             return
 
         notes = [
@@ -1393,7 +1566,7 @@ Math.round(ObjC.unwrap(ref[0]));
         ]
         self._scanning_regions = to_scan
         self.set_progress(5, "Starting full scan…")
-        self.query_one("#status", Static).update(
+        self.set_status(
             "; ".join(notes) if notes else "Full scan started."
         )
 
@@ -1409,12 +1582,15 @@ Math.round(ObjC.unwrap(ref[0]));
                 )
             except Exception as exc:
                 self.set_progress(100, f"{label} failed: {exc}")
-                self.query_one("#status", Static).update(
+                self.set_status(
                     f"{label} failed: {exc}"
                 )
                 continue
             self.region_roots[region] = root
-            self.cache.save_region(region, [root] if root else [])
+            self.cache.save_region(
+                region, [root] if root else [], created_at=time.time()
+            )
+            self.refresh_nav()
 
         self._scanning_regions = None
         self.selected_path = None
@@ -1423,7 +1599,7 @@ Math.round(ObjC.unwrap(ref[0]));
         self.update_disk_card()
         self.schedule_workspace_sizing()
         self.set_progress(100, "Full scan complete.")
-        self.query_one("#status", Static).update(
+        self.set_status(
             "Full scan complete; fresh regions were skipped."
         )
 
@@ -1436,7 +1612,7 @@ Math.round(ObjC.unwrap(ref[0]));
         in place and cached independently; other regions stay untouched.
         """
         if self._scanning_regions:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "A region scan is already running."
             )
             return
@@ -1454,12 +1630,15 @@ Math.round(ObjC.unwrap(ref[0]));
                 )
             except Exception as exc:
                 self.set_progress(100, f"{label} failed: {exc}")
-                self.query_one("#status", Static).update(
+                self.set_status(
                     f"{label} failed: {exc}"
                 )
                 continue
             self.region_roots[region] = root
-            self.cache.save_region(region, [root] if root else [])
+            self.cache.save_region(
+                region, [root] if root else [], created_at=time.time()
+            )
+            self.refresh_nav()
 
         self._scanning_regions = None
         self.selected_path = None
@@ -1467,13 +1646,13 @@ Math.round(ObjC.unwrap(ref[0]));
         self.refresh_ui()
         self.schedule_workspace_sizing()
         self.set_progress(100, "Scan complete.")
-        self.query_one("#status", Static).update(
+        self.set_status(
             f"Scanned: {', '.join(regions)}."
         )
 
     def action_force_full_scan(self):
         if self._operation_running:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "A clean/delete operation is still running."
             )
             return
@@ -1533,14 +1712,14 @@ Math.round(ObjC.unwrap(ref[0]));
             100,
             f"Workspace sizes measured: {done}/{len(pending)}",
         )
-        self.query_one("#status", Static).update(
+        self.set_status(
             f"Workspace project sizes measured in the background "
             f"({done}/{len(pending)})."
         )
 
     async def refresh_selected(self, node: ScanNode):
         self.set_progress(10, f"Refreshing / measuring selected item: {node.name}")
-        self.query_one("#status", Static).update(
+        self.set_status(
             "Refresh Selected measures this exact directory. A very large directory may take time."
         )
         scanner = self.make_progress_scanner()
@@ -1553,7 +1732,7 @@ Math.round(ObjC.unwrap(ref[0]));
 
     def action_refresh_selected(self):
         if self._operation_running:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "A clean/delete operation is still running."
             )
             return
@@ -1566,7 +1745,7 @@ Math.round(ObjC.unwrap(ref[0]));
     @work(exclusive=True, group="filesystem_action")
     async def run_current_action(self):
         if self._operation_running:
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "An operation is already running."
             )
             return
@@ -1583,10 +1762,12 @@ Math.round(ObjC.unwrap(ref[0]));
         action_label = ""
         if action == "project_clean":
             action_label = project.get("label", "Project clean")
+        elif action == "worktree_remove":
+            action_label = f"Remove worktree {self.display_size(node)}"
         elif action in ("delete_cache", "delete_manual"):
             action_label = f"Delete {self.display_size(node)}"
 
-        self.query_one("#status", Static).update(
+        self.set_status(
             f"Action requested: {action_label} — waiting for confirmation."
         )
         self.set_progress(
@@ -1608,9 +1789,22 @@ Math.round(ObjC.unwrap(ref[0]));
             title = "Delete cache / temporary directory"
             message = (
                 f"{node.path}\n\n"
+                f"Current size: {self.display_size(node)}\n"
+                f"{node.reason}\n\n"
+                "This permanently removes the directory. Open files are checked "
+                "first; deletion is refused if a process is using it."
+            )
+            destructive = True
+        elif action == "worktree_remove":
+            worktree = node.metadata.get("worktree") or {}
+            title = "Remove git worktree"
+            message = (
+                f"{node.path}\n\n"
+                f"Branch: {worktree.get('branch')} (kept)\n"
                 f"Current size: {self.display_size(node)}\n\n"
-                "This permanently removes this explicit known cache/temp directory.\n"
-                "The tree is updated automatically after deletion."
+                "Runs git worktree remove without --force: git refuses if the "
+                "worktree has uncommitted or untracked files. Ignored build "
+                "output is deleted with it."
             )
             destructive = True
         else:
@@ -1631,8 +1825,8 @@ Math.round(ObjC.unwrap(ref[0]));
             )
         )
         if not ok:
-            self.set_progress(0, "Action cancelled.")
-            self.query_one("#status", Static).update("Action cancelled.")
+            self.set_progress(0, "Action cancelled.", busy=False)
+            self.set_status("Action cancelled.")
             return
 
         # Snapshot UI state before the filesystem changes.
@@ -1652,7 +1846,7 @@ Math.round(ObjC.unwrap(ref[0]));
         self._active_operation_path = node_path
         self.set_operation_controls(True, f"Running {title}…")
         self.set_progress(20, f"Starting: {title}")
-        self.query_one("#status", Static).update(
+        self.set_status(
             f"Starting {title} in {node_path}…"
         )
 
@@ -1670,7 +1864,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 100,
                 f"Action failed: {error_text}",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"Action failed: {error_text}"
             )
 
@@ -1701,7 +1895,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 75,
                 f"{title} finished — refreshing {node_name}…",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 "Clean command finished. Refreshing the cleaned project now…"
             )
 
@@ -1714,7 +1908,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 )
             except Exception as exc:
                 self.set_progress(100, "Clean succeeded; refresh failed.")
-                self.query_one("#status", Static).update(
+                self.set_status(
                     f"{title} succeeded, but automatic refresh failed: {exc}"
                 )
                 self._active_operation_path = None
@@ -1757,7 +1951,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 100,
                 f"{title} complete; project refreshed automatically.",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"{log} Refreshed automatically. "
                 f"Freed about {human_size(actual_freed)}."
             )
@@ -1779,7 +1973,7 @@ Math.round(ObjC.unwrap(ref[0]));
                 100,
                 f"Deleted {node_name} and updated the tree.",
             )
-            self.query_one("#status", Static).update(
+            self.set_status(
                 f"{log} Freed about {human_size(reported_freed)}."
             )
 
@@ -1831,6 +2025,11 @@ Math.round(ObjC.unwrap(ref[0]));
             self.open_finder()
         elif bid == "terminal":
             self.open_terminal()
+
+    def action_run_action(self):
+        node = self.current_node()
+        if node and node.metadata.get("action_type", "none") != "none":
+            self.run_current_action()
 
     def action_toggle_expand(self):
         self.toggle_expand()

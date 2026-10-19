@@ -577,6 +577,66 @@ def file_size(path: Path) -> int:
         return 0
 
 
+CACHEDIR_TAG_SIGNATURE = b"Signature: 8a477f597d28d172789f06886806bc55"
+
+
+def has_cache_tag(path: Path) -> bool:
+    """
+    True when `path` is marked as a regenerable cache by the Cache Directory
+    Tagging Specification (https://bford.info/cachedir/). Cargo, among other
+    tools, writes this tag into every target directory.
+    """
+    try:
+        with (path / "CACHEDIR.TAG").open("rb") as fh:
+            return fh.read(len(CACHEDIR_TAG_SIGNATURE)) == CACHEDIR_TAG_SIGNATURE
+    except OSError:
+        return False
+
+
+def open_file_users(paths: list[Path]) -> dict[str, list[str]]:
+    """
+    Map each given path to the current user's processes ("name (pid)") that
+    have a file, working directory or executable at or below it.
+
+    `-n -P -b` skip DNS/port lookups and blocking kernel calls; without them
+    lsof takes ~30 s on a busy machine instead of ~0.2 s.
+    """
+    wanted = {}
+    for path in paths:
+        try:
+            wanted[str(path.resolve())] = str(path)
+        except Exception:
+            wanted[str(path)] = str(path)
+    if not wanted:
+        return {}
+
+    rc, output = run(
+        ["/usr/sbin/lsof", "-n", "-P", "-w", "-b", "-u", str(os.getuid()), "-Fpcn"],
+        timeout=60,
+    )
+    if rc != 0 and not output.startswith("p"):
+        raise RuntimeError(f"lsof failed (exit {rc}): {output[-400:]}")
+
+    users: dict[str, set[str]] = {}
+    pid = command = ""
+    for line in output.splitlines():
+        tag, value = line[:1], line[1:]
+        if tag == "p":
+            pid, command = value, ""
+        elif tag == "c":
+            command = value
+        elif tag == "n" and value.startswith("/"):
+            # Walk up the open path; every ancestor that was asked about is
+            # in use by this process.
+            current = value
+            while current and current != "/":
+                if current in wanted:
+                    users.setdefault(wanted[current], set()).add(f"{command} ({pid})")
+                current = os.path.dirname(current)
+
+    return {path: sorted(found) for path, found in users.items()}
+
+
 def makefile_has_clean(path: Path) -> bool:
     makefile = path / "Makefile"
     if not makefile.exists():

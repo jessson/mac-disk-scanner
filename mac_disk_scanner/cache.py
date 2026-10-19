@@ -7,11 +7,11 @@ from typing import Optional
 
 from .models import ScanNode
 
-CACHE_VERSION = 36
+CACHE_VERSION = 37
 TTL_SECONDS = 30 * 60
 
 # Scan regions; each one is cached independently with its own timestamp.
-REGIONS = ("workspaces", "temporary", "caches", "home")
+REGIONS = ("workspaces", "worktrees", "temporary", "caches", "home")
 
 
 class ScanCache:
@@ -90,16 +90,25 @@ class ScanCache:
         }
 
     def save_region(self, region: str, roots: list, created_at: float | None = None):
-        """Atomically persist one region, keeping every other region intact."""
+        """
+        Atomically persist one region, keeping every other region intact.
+
+        `created_at` is the scan time and drives freshness. Pass it only for a
+        new scan; in-place edits (delete, expand, sizing) keep the stored scan
+        time so an old region never looks freshly scanned.
+        """
         if region not in REGIONS:
             return
         payload = self._load_payload() or {
             "version": CACHE_VERSION,
             "regions": {},
         }
+        regions = payload.setdefault("regions", {})
         now = time.time()
-        payload.setdefault("regions", {})[region] = {
-            "created_at": created_at if created_at is not None else now,
+        if created_at is None:
+            created_at = float((regions.get(region) or {}).get("created_at", now))
+        regions[region] = {
+            "created_at": created_at,
             "updated_at": now,
             "roots": [x.to_dict() for x in roots],
         }
